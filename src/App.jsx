@@ -133,6 +133,19 @@ function getInitialTasks(lang) {
   return lang === "en" ? initialTasksEn : initialTasksZh;
 }
 
+/** Built-in demo tasks (ids 1–5): swap stored text when UI language changes */
+const BUILTIN_TASK_ID_SET = new Set(initialTasksZh.map((t) => t.id));
+
+function syncBuiltinTaskTexts(tasks, lang) {
+  const zhById = Object.fromEntries(initialTasksZh.map((t) => [t.id, t.text]));
+  const enById = Object.fromEntries(initialTasksEn.map((t) => [t.id, t.text]));
+  return tasks.map((t) => {
+    if (!BUILTIN_TASK_ID_SET.has(t.id)) return t;
+    const text = lang === "en" ? enById[t.id] : zhById[t.id];
+    return text === t.text ? t : { ...t, text };
+  });
+}
+
 const TAG_STYLE = {
   学业: { bg: "#DEEEFF", c: "#3A7BD5" },
   研究: { bg: "#D6F5E8", c: "#1A8C54" },
@@ -305,6 +318,10 @@ function NowPage({ setTab }) {
   const [micPermissionError, setMicPermissionError] = useState("");
   const inputRef = useRef();
   const recognitionRef = useRef(null);
+
+  useEffect(() => {
+    setTasks((prev) => syncBuiltinTaskTexts(prev, lang));
+  }, [lang]);
 
   const done    = tasks.filter(t => t.done).length;
   const total   = tasks.length;
