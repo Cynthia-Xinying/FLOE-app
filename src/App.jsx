@@ -114,36 +114,10 @@ function Styles() {
 /* ═══════════════════════════════════════════════════════
    GLOBAL STATE (lightweight, no zustand needed for demo)
 ═══════════════════════════════════════════════════════ */
-const initialTasksZh = [
-  { id: 1, text: "回复导师邮件",       done: false, energy: "low",  mins: 15, tag: "学业" },
-  { id: 2, text: "读 paper 第三章",    done: false, energy: "high", mins: 45, tag: "研究" },
-  { id: 3, text: "更新 Floe 功能文档", done: true,  energy: "high", mins: 30, tag: "项目" },
-  { id: 4, text: "买菜",               done: false, energy: "low",  mins: 20, tag: "生活" },
-  { id: 5, text: "冥想 10 分钟",       done: false, energy: "low",  mins: 10, tag: "健康" },
-];
-const initialTasksEn = [
-  { id: 1, text: "Reply to advisor email", done: false, energy: "low",  mins: 15, tag: "学业" },
-  { id: 2, text: "Read paper ch. 3",     done: false, energy: "high", mins: 45, tag: "研究" },
-  { id: 3, text: "Update Floe docs",     done: true,  energy: "high", mins: 30, tag: "项目" },
-  { id: 4, text: "Grocery run",          done: false, energy: "low",  mins: 20, tag: "生活" },
-  { id: 5, text: "Meditate 10 min",      done: false, energy: "low",  mins: 10, tag: "健康" },
-];
-
-function getInitialTasks(lang) {
-  return lang === "en" ? initialTasksEn : initialTasksZh;
-}
-
-/** Built-in demo tasks (ids 1–5): swap stored text when UI language changes */
-const BUILTIN_TASK_ID_SET = new Set(initialTasksZh.map((t) => t.id));
-
-function syncBuiltinTaskTexts(tasks, lang) {
-  const zhById = Object.fromEntries(initialTasksZh.map((t) => [t.id, t.text]));
-  const enById = Object.fromEntries(initialTasksEn.map((t) => [t.id, t.text]));
-  return tasks.map((t) => {
-    if (!BUILTIN_TASK_ID_SET.has(t.id)) return t;
-    const text = lang === "en" ? enById[t.id] : zhById[t.id];
-    return text === t.text ? t : { ...t, text };
-  });
+function isHiddenToday(task) {
+  if (!task.showAfter) return false;
+  const today = new Date().toISOString().split("T")[0];
+  return task.showAfter > today;
 }
 
 const TAG_STYLE = {
@@ -298,17 +272,12 @@ function NowPage({ setTab }) {
   const [tasks, setTasks] = useState(() => {
     try {
       const saved = localStorage.getItem("floe-tasks");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-      const fallbackLang = localStorage.getItem("floe-lang") === "en" ? "en" : "zh";
-      return getInitialTasks(fallbackLang);
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      const fallbackLang = localStorage.getItem("floe-lang") === "en" ? "en" : "zh";
-      return getInitialTasks(fallbackLang);
+      return [];
     }
   });
+  const [showPostpone, setShowPostpone] = useState(null);
   const [showAll, setShowAll]     = useState(false);
   const [newText, setNewText]     = useState("");
   const [burst, setBurst]         = useState(null);
@@ -319,15 +288,44 @@ function NowPage({ setTab }) {
   const inputRef = useRef();
   const recognitionRef = useRef(null);
 
-  useEffect(() => {
-    setTasks((prev) => syncBuiltinTaskTexts(prev, lang));
-  }, [lang]);
+  const todayStr = new Date().toISOString().split("T")[0];
+  const tasksToday = tasks.filter((t) => !isHiddenToday(t));
+  const isPostponedToday = (t) =>
+    !!(t.postponedToday && t.postponedDate === todayStr);
+  const mit = tasksToday.find((t) => !t.done && !isPostponedToday(t));
+  const remainingNormal = tasksToday.filter(
+    (t) => !t.done && !isPostponedToday(t) && t.id !== mit?.id,
+  );
+  const remainingPostponed = tasksToday.filter(
+    (t) => !t.done && isPostponedToday(t),
+  );
+  const done = tasksToday.filter((t) => t.done).length;
+  const total = tasksToday.length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
 
-  const done    = tasks.filter(t => t.done).length;
-  const total   = tasks.length;
-  const pct     = total ? Math.round((done / total) * 100) : 0;
-  const mit     = tasks.find(t => !t.done);               // Most Important Task
-  const remaining = tasks.filter(t => !t.done && t !== mit);
+  const postponeTask = (id, when) => {
+    const day = new Date().toISOString().split("T")[0];
+    setTasks((ts) =>
+      ts.map((t) => {
+        if (t.id !== id) return t;
+        if (when === "later") {
+          return { ...t, postponedToday: true, postponedDate: day };
+        }
+        if (when === "tomorrow") {
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          return {
+            ...t,
+            showAfter: tomorrow.toISOString().split("T")[0],
+            postponedToday: false,
+            postponedDate: undefined,
+          };
+        }
+        return t;
+      }),
+    );
+    setShowPostpone(null);
+  };
 
   const toggleTask = useCallback((id) => {
     setTasks(ts => ts.map(t => {
@@ -409,8 +407,6 @@ function NowPage({ setTab }) {
       setTimeout(() => r.start(), 200);
     }
   }, [listening]);
-
-  const hideTask = (id) => setTasks(ts => ts.filter(t => t.id !== id));
 
   useEffect(() => {
     try {
@@ -515,8 +511,40 @@ function NowPage({ setTab }) {
         </div>
       </div>
 
+      {/* Empty state — no tasks for today */}
+      {total === 0 && (
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", padding: "40px 24px", textAlign: "center",
+          animation: "fadeUp 0.4s ease",
+        }}>
+          <div style={{ fontSize: 48, marginBottom: 16, animation: "floatIce 3s ease-in-out infinite" }}>
+            🧊
+          </div>
+          <p style={{ fontFamily: FONTS.display, fontSize: 20, fontWeight: 600, color: C.slate, marginBottom: 8 }}>
+            {t("now.emptyPromptTitle")}
+          </p>
+          <p style={{ fontSize: 14, color: C.mist, lineHeight: 1.7, marginBottom: 28 }}>
+            {t("now.emptyPromptHint")}
+          </p>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.focus()}
+            style={{
+              padding: "13px 28px", borderRadius: 16, border: "none",
+              background: `linear-gradient(135deg, ${C.iceDeep}, ${C.ice})`,
+              color: "#fff", fontSize: 15, fontWeight: 600,
+              cursor: "pointer", fontFamily: FONTS.body,
+              boxShadow: `0 4px 16px ${C.iceDeep}44`,
+            }}
+          >
+            {t("now.emptyPromptCta")}
+          </button>
+        </div>
+      )}
+
       {/* MIT Card */}
-      {mit && (
+      {total > 0 && mit && (
         <div style={{ margin: "20px 24px 0" }}>
           <p style={{ fontSize: 11, color: C.mist, letterSpacing: "0.06em", fontWeight: 500, marginBottom: 8 }}>
             {t("now.mitTitle")}
@@ -525,13 +553,13 @@ function NowPage({ setTab }) {
             background: C.white, borderRadius: 20, padding: "20px",
             boxShadow: `0 4px 20px rgba(28,43,48,0.10)`,
             border: `1.5px solid ${C.frostDeep}`,
-            position: "relative", overflow: "hidden",
+            position: "relative", overflow: "visible",
           }}>
-            {/* Ice accent */}
             <div style={{
               position: "absolute", top: -20, right: -20,
               width: 80, height: 80, borderRadius: "50%",
               background: `radial-gradient(circle, ${C.frostDeep}80, transparent)`,
+              pointerEvents: "none",
             }} />
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
               <EnergyDot level={mit.energy} />
@@ -541,8 +569,9 @@ function NowPage({ setTab }) {
             <p style={{ fontSize: 17, fontWeight: 500, lineHeight: 1.4, marginBottom: 18 }}>
               {mit.text}
             </p>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
               <button
+                type="button"
                 className="btn-press"
                 onClick={() => { toggleTask(mit.id); setTab("focus"); }}
                 style={{
@@ -554,26 +583,70 @@ function NowPage({ setTab }) {
               >
                 {t("now.startFocus")}
               </button>
-              <button
-                className="btn-press"
-                onClick={() => hideTask(mit.id)}
-                style={{
-                  padding: "12px 16px", borderRadius: 14,
-                  border: `1.5px solid ${C.frostDeep}`, background: "transparent",
-                  color: C.mist, fontSize: 13, cursor: "pointer",
-                }}
-              >
-                {t("now.notToday")}
-              </button>
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                <button
+                  type="button"
+                  className="btn-press"
+                  onClick={() => setShowPostpone(showPostpone === mit.id ? null : mit.id)}
+                  style={{
+                    padding: "12px 16px", borderRadius: 14,
+                    border: `1.5px solid ${C.frostDeep}`, background: "transparent",
+                    color: C.mist, fontSize: 13, cursor: "pointer",
+                    fontFamily: FONTS.body, position: "relative",
+                  }}
+                >
+                  {t("now.postponeLater")}
+                </button>
+                {showPostpone === mit.id && (
+                  <div style={{
+                    position: "absolute", top: "calc(100% + 8px)", right: 0,
+                    background: C.white, borderRadius: 14, border: `1.5px solid ${C.frostDeep}`,
+                    boxShadow: "0 4px 16px rgba(28,43,48,0.12)",
+                    overflow: "hidden", zIndex: 50, minWidth: 160,
+                    animation: "fadeUp 0.2s ease",
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => postponeTask(mit.id, "later")}
+                      style={{
+                        width: "100%", padding: "12px 16px", border: "none",
+                        background: "transparent", textAlign: "left",
+                        fontSize: 14, color: C.slate, cursor: "pointer",
+                        borderBottom: `1px solid ${C.frostDeep}`,
+                        fontFamily: FONTS.body,
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = C.frost; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      {t("now.postponeTonight")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => postponeTask(mit.id, "tomorrow")}
+                      style={{
+                        width: "100%", padding: "12px 16px", border: "none",
+                        background: "transparent", textAlign: "left",
+                        fontSize: 14, color: C.slate, cursor: "pointer",
+                        fontFamily: FONTS.body,
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = C.frost; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      {t("now.postponeTomorrow")}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Rest of tasks */}
-      {remaining.length > 0 && (
+      {/* Rest of tasks (not MIT) */}
+      {total > 0 && remainingNormal.length > 0 && (
         <div style={{ margin: "20px 24px 0" }}>
           <button
+            type="button"
             onClick={() => setShowAll(s => !s)}
             style={{
               width: "100%", textAlign: "left", background: "none",
@@ -583,27 +656,63 @@ function NowPage({ setTab }) {
             }}
           >
             <span style={{ transition: "transform 0.2s", display: "inline-block", transform: showAll ? "rotate(90deg)" : "rotate(0deg)" }}>›</span>
-            {t("now.moreTasks", { n: remaining.length })}
+            {t("now.moreTasks", { n: remainingNormal.length })}
           </button>
 
-          {showAll && remaining.map((t, i) => (
+          {showAll && remainingNormal.map((taskRow, i) => (
             <TaskRow
-              key={t.id}
-              task={t}
-              burst={burst === t.id}
+              key={taskRow.id}
+              task={taskRow}
+              burst={burst === taskRow.id}
               delay={i * 0.04}
-              onToggle={() => toggleTask(t.id)}
-              onHide={() => hideTask(t.id)}
+              onToggle={() => toggleTask(taskRow.id)}
+              showPostpone={showPostpone}
+              setShowPostpone={setShowPostpone}
+              postponeTask={postponeTask}
+              postponeMuted={false}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Postponed to tonight — bottom, muted */}
+      {total > 0 && remainingPostponed.length > 0 && (
+        <div style={{ margin: "20px 24px 0" }}>
+          <p style={{ fontSize: 11, color: C.mist, letterSpacing: "0.06em", fontWeight: 500, marginBottom: 10 }}>
+            {t("now.postponedSection")}
+          </p>
+          {remainingPostponed.map((taskRow, i) => (
+            <TaskRow
+              key={taskRow.id}
+              task={taskRow}
+              burst={burst === taskRow.id}
+              delay={i * 0.04}
+              onToggle={() => toggleTask(taskRow.id)}
+              showPostpone={showPostpone}
+              setShowPostpone={setShowPostpone}
+              postponeTask={postponeTask}
+              postponeMuted
             />
           ))}
         </div>
       )}
 
       {/* Done tasks (collapsed) */}
-      {done > 0 && (
+      {total > 0 && done > 0 && (
         <div style={{ margin: "8px 24px 0" }}>
-          {tasks.filter(t => t.done).map((t, i) => (
-            <TaskRow key={t.id} task={t} burst={false} delay={0} onToggle={() => toggleTask(t.id)} onHide={() => {}} />
+          {tasksToday.filter((x) => x.done).map((taskRow) => (
+            <TaskRow
+              key={taskRow.id}
+              task={taskRow}
+              burst={false}
+              delay={0}
+              onToggle={() => toggleTask(taskRow.id)}
+              showPostpone={showPostpone}
+              setShowPostpone={setShowPostpone}
+              postponeTask={postponeTask}
+              postponeMuted={false}
+              doneOnly
+            />
           ))}
         </div>
       )}
@@ -704,23 +813,33 @@ function NowPage({ setTab }) {
   );
 }
 
-function TaskRow({ task, burst, delay, onToggle, onHide }) {
+function TaskRow({
+  task,
+  burst,
+  delay,
+  onToggle,
+  showPostpone,
+  setShowPostpone,
+  postponeTask,
+  postponeMuted,
+  doneOnly,
+}) {
   const { t } = useLanguage();
+  const muted = postponeMuted && !task.done;
   return (
     <div
       style={{
         display: "flex", alignItems: "center", gap: 12,
-        padding: "12px 14px", background: task.done ? "transparent" : C.white,
+        padding: "12px 14px", background: task.done ? "transparent" : muted ? C.frost : C.white,
         borderRadius: 14, marginBottom: 8,
         border: `1.5px solid ${task.done ? "transparent" : C.frostDeep}`,
-        opacity: task.done ? 0.5 : 1,
+        opacity: task.done ? 0.5 : muted ? 0.88 : 1,
         animation: `fadeUp 0.3s ease ${delay}s both`,
         position: "relative", overflow: "visible",
         transition: "opacity 0.3s",
       }}
     >
       <Particles active={burst} />
-      {/* Checkbox */}
       <div
         onClick={onToggle}
         style={{
@@ -737,7 +856,6 @@ function TaskRow({ task, burst, delay, onToggle, onHide }) {
           </span>
         )}
       </div>
-      {/* Content */}
       <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={onToggle}>
         <p style={{
           fontSize: 14, textDecoration: task.done ? "line-through" : "none",
@@ -746,24 +864,71 @@ function TaskRow({ task, burst, delay, onToggle, onHide }) {
         }}>
           {task.text}
         </p>
-        <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "center", flexWrap: "wrap" }}>
+          {muted && (
+            <span style={{ fontSize: 10, color: C.mist, fontWeight: 500 }}>
+              {t("now.postponeTonightBadge")}
+            </span>
+          )}
           <Tag label={task.tag} />
           <EnergyDot level={task.energy} />
           <span style={{ fontSize: 11, color: C.mist }}>{task.mins}m</span>
         </div>
       </div>
-      {/* Hide button */}
-      {!task.done && (
-        <button
-          onClick={onHide}
-          style={{
-            background: "none", border: "none", color: C.mist,
-            cursor: "pointer", fontSize: 16, padding: "4px", flexShrink: 0,
-          }}
-          title={t("now.hideTitle")}
-        >
-          ›
-        </button>
+      {!task.done && !doneOnly && (
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => setShowPostpone(showPostpone === task.id ? null : task.id)}
+            style={{
+              padding: "8px 10px", borderRadius: 12,
+              border: `1.5px solid ${C.frostDeep}`, background: "transparent",
+              color: C.mist, fontSize: 12, cursor: "pointer",
+              fontFamily: FONTS.body,
+            }}
+          >
+            {t("now.postponeLater")}
+          </button>
+          {showPostpone === task.id && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 8px)", right: 0,
+              background: C.white, borderRadius: 14, border: `1.5px solid ${C.frostDeep}`,
+              boxShadow: "0 4px 16px rgba(28,43,48,0.12)",
+              overflow: "hidden", zIndex: 50, minWidth: 160,
+              animation: "fadeUp 0.2s ease",
+            }}>
+              <button
+                type="button"
+                onClick={() => postponeTask(task.id, "later")}
+                style={{
+                  width: "100%", padding: "12px 16px", border: "none",
+                  background: "transparent", textAlign: "left",
+                  fontSize: 14, color: C.slate, cursor: "pointer",
+                  borderBottom: `1px solid ${C.frostDeep}`,
+                  fontFamily: FONTS.body,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = C.frost; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                {t("now.postponeTonight")}
+              </button>
+              <button
+                type="button"
+                onClick={() => postponeTask(task.id, "tomorrow")}
+                style={{
+                  width: "100%", padding: "12px 16px", border: "none",
+                  background: "transparent", textAlign: "left",
+                  fontSize: 14, color: C.slate, cursor: "pointer",
+                  fontFamily: FONTS.body,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = C.frost; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                {t("now.postponeTomorrow")}
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
