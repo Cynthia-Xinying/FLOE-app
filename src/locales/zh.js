@@ -114,6 +114,7 @@ export const zh = {
     settingsNotifyVal: "开启",
     settingsPartner: "问责伙伴",
     settingsPartnerVal: "添加",
+    settingsSignOut: "退出登录",
     modalPomodoroTitle: "番茄时长设置",
     modalFocusLen: "专注时长",
     modalShortLen: "短休时长",

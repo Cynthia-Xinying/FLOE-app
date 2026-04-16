@@ -202,9 +202,13 @@ function LanguageToggle() {
     <div
       title={t("lang.switchHint")}
       style={{
-        display: "flex", alignItems: "center", gap: 4,
-        background: C.white, border: `1.5px solid ${C.frostDeep}`,
-        borderRadius: 14, padding: "4px 8px",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        background: C.white,
+        border: `1.5px solid ${C.frostDeep}`,
+        borderRadius: 20,
+        padding: "4px 12px",
       }}
     >
       <button
@@ -212,10 +216,14 @@ function LanguageToggle() {
         className="btn-press"
         onClick={() => setLang("zh")}
         style={{
-          border: "none", background: lang === "zh" ? C.frostDeep : "transparent",
-          color: lang === "zh" ? C.slate : C.mist,
-          fontSize: 12, fontWeight: lang === "zh" ? 600 : 400,
-          padding: "4px 8px", borderRadius: 10, cursor: "pointer",
+          border: "none",
+          background: lang === "zh" ? C.iceDeep : C.frostDeep,
+          color: lang === "zh" ? "#fff" : C.mist,
+          fontSize: 12,
+          fontWeight: 600,
+          padding: "4px 12px",
+          borderRadius: 20,
+          cursor: "pointer",
         }}
       >
         {t("lang.zh")}
@@ -225,10 +233,14 @@ function LanguageToggle() {
         className="btn-press"
         onClick={() => setLang("en")}
         style={{
-          border: "none", background: lang === "en" ? C.frostDeep : "transparent",
-          color: lang === "en" ? C.slate : C.mist,
-          fontSize: 12, fontWeight: lang === "en" ? 600 : 400,
-          padding: "4px 8px", borderRadius: 10, cursor: "pointer",
+          border: "none",
+          background: lang === "en" ? C.iceDeep : C.frostDeep,
+          color: lang === "en" ? "#fff" : C.mist,
+          fontSize: 12,
+          fontWeight: 600,
+          padding: "4px 12px",
+          borderRadius: 20,
+          cursor: "pointer",
         }}
       >
         {t("lang.en")}
@@ -254,7 +266,7 @@ function EnergyDot({ level }) {
 const SpeechRecognitionAPI = typeof window !== "undefined" ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
 const supportsSpeech = !!SpeechRecognitionAPI;
 
-function NowPage({ setTab }) {
+function NowPage({ setTab, lang: _lang }) {
   const { t, lang, locale } = useLanguage();
   const [energy, setEnergy] = useState(() => {
     try {
@@ -283,7 +295,6 @@ function NowPage({ setTab }) {
   const [burst, setBurst]         = useState(null);
   const [celebrating, setCelebrating] = useState(false);
   const [listening, setListening] = useState(false);
-  const [micLang, setMicLang]     = useState("zh-CN");   // zh-CN | en-US
   const [micPermissionError, setMicPermissionError] = useState("");
   const inputRef = useRef();
   const recognitionRef = useRef(null);
@@ -361,7 +372,7 @@ function NowPage({ setTab }) {
     } catch {
       return;
     }
-    r.lang = micLang;
+    r.lang = lang === "en" ? "en-US" : "zh-CN";
     r.interimResults = false;
     r.maxAlternatives = 1;
     r.continuous = false;
@@ -370,7 +381,7 @@ function NowPage({ setTab }) {
       recognitionRef.current?.abort?.();
       recognitionRef.current = null;
     };
-  }, [micLang]);
+  }, [lang]);
 
   const startListening = useCallback(() => {
     if (!supportsSpeech) return;
@@ -751,21 +762,6 @@ function NowPage({ setTab }) {
               >
                 {listening ? "🔴" : "🎤"}
               </button>
-              <button
-                className="btn-press"
-                onClick={() => setMicLang(l => l === "zh-CN" ? "en-US" : "zh-CN")}
-                style={{
-                  height: 48, padding: "0 12px", borderRadius: 14,
-                  border: `1.5px solid ${C.frostDeep}`, background: C.white,
-                  fontSize: 11, fontWeight: 500, cursor: "pointer",
-                  display: "flex", alignItems: "center", gap: 4,
-                  color: C.slateLight,
-                }}
-              >
-                <span style={{ color: micLang === "zh-CN" ? C.iceDeep : C.mist, fontWeight: micLang === "zh-CN" ? 600 : 400 }}>中</span>
-                <span style={{ color: C.mist }}>/</span>
-                <span style={{ color: micLang === "en-US" ? C.iceDeep : C.mist, fontWeight: micLang === "en-US" ? 600 : 400 }}>EN</span>
-              </button>
             </>
           )}
           <button
@@ -944,12 +940,13 @@ const FOCUS_MODES = [
   { id: "long",  mins: 15, color: C.blush,   emoji: "☁️" },
 ];
 
-function FocusPage() {
-  const { t } = useLanguage();
+function FocusPage({ lang: _lang }) {
+  const { t, lang } = useLanguage();
   const [mode, setMode]       = useState(FOCUS_MODES[0]);
   const [secs, setSecs]       = useState(FOCUS_MODES[0].mins * 60);
   const [running, setRunning] = useState(false);
-  const [phase, setPhase]     = useState("idle"); // idle|running|done
+  const [phase, setPhase]     = useState("idle"); // idle|running|completed
+  const [skipNotice, setSkipNotice] = useState("");
   const [sessions, setSessions] = useState(() => {
     try {
       const today = new Date().toISOString().split("T")[0];
@@ -988,7 +985,7 @@ function FocusPage() {
           if (s <= 1) {
             clearInterval(intervalRef.current);
             setRunning(false);
-            setPhase("done");
+            setPhase("completed");
             if (mode.id === "focus" || mode.id === "adhd") setSessions(n => n + 1);
             return 0;
           }
@@ -1001,13 +998,42 @@ function FocusPage() {
     return () => clearInterval(intervalRef.current);
   }, [running]);
 
-  const switchMode = m => {
+  const switchMode = (m) => {
     clearInterval(intervalRef.current);
-    setMode(m); setSecs(m.mins * 60);
-    setRunning(false); setPhase("idle");
+    setMode(m);
+    setSecs(m.mins * 60);
+    setRunning(false);
+    setPhase("idle");
+    setSkipNotice("");
   };
-  const toggle = () => { setRunning(r => !r); if (phase === "idle") setPhase("running"); };
-  const reset  = () => { setRunning(false); setSecs(mode.mins * 60); setPhase("idle"); };
+  const toggle = () => {
+    setRunning((r) => !r);
+    if (phase === "idle") setPhase("running");
+  };
+  const reset = () => {
+    setRunning(false);
+    setSecs(mode.mins * 60);
+    setPhase("idle");
+    setSkipNotice("");
+  };
+
+  const skipCurrentTimer = () => {
+    const elapsedRatio = mode.mins > 0 ? (mode.mins * 60 - secs) / (mode.mins * 60) : 0;
+    setSecs(0);
+    setRunning(false);
+    setPhase("completed");
+    if ((mode.id === "focus" || mode.id === "adhd") && elapsedRatio >= 0.3) {
+      setSessions((n) => n + 1);
+      setSkipNotice("");
+      return;
+    }
+    setSkipNotice(
+      lang === "en"
+        ? "Note: skipping early won't count as a session"
+        : "提示：跳过不会计入番茄数",
+    );
+    setTimeout(() => setSkipNotice(""), 2000);
+  };
 
   const tipByMode = {
     adhd:  t("focus.tips.adhd"),
@@ -1026,7 +1052,10 @@ function FocusPage() {
             {t("focus.pomodorosToday", { n: sessions })}
           </p>
         </div>
-        <FloeIce size={26} style={{ marginTop: 4 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <LanguageToggle />
+          <FloeIce size={26} style={{ marginTop: 4 }} />
+        </div>
       </div>
 
       {/* Mode Selector */}
@@ -1102,7 +1131,7 @@ function FocusPage() {
         </div>
 
         {/* Done message */}
-        {phase === "done" && (
+        {phase === "completed" && (
           <div style={{
             padding: "10px 24px", background: `${mode.color}18`, borderRadius: 20,
             border: `1.5px solid ${mode.color}44`, animation: "popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both",
@@ -1114,16 +1143,20 @@ function FocusPage() {
         )}
 
         {/* Controls */}
-        <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 8 }}>
-          <button
-            className="btn-press"
-            onClick={reset}
-            style={{
-              width: 48, height: 48, borderRadius: "50%",
-              border: `2px solid ${C.frostDeep}`, background: C.white,
-              fontSize: 18, cursor: "pointer", color: C.slateLight,
-            }}
-          >↺</button>
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginTop: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+            <button
+              className="btn-press"
+              onClick={reset}
+              title={lang === "en" ? "Reset" : "重置"}
+              style={{
+                width: 48, height: 48, borderRadius: "50%",
+                border: `2px solid ${C.frostDeep}`, background: C.white,
+                fontSize: 18, cursor: "pointer", color: C.slateLight,
+              }}
+            >↺</button>
+            <span style={{ fontSize: 10, color: C.mist }}>{lang === "en" ? "Reset" : "重置"}</span>
+          </div>
           <button
             className="btn-press"
             onClick={toggle}
@@ -1137,16 +1170,25 @@ function FocusPage() {
           >
             {running ? "⏸" : "▶"}
           </button>
-          <button
-            className="btn-press"
-            onClick={() => setSessions(n => n + 1)}
-            style={{
-              width: 48, height: 48, borderRadius: "50%",
-              border: `2px solid ${C.frostDeep}`, background: C.white,
-              fontSize: 16, cursor: "pointer", color: C.slateLight,
-            }}
-          >⏭</button>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+            <button
+              className="btn-press"
+              onClick={skipCurrentTimer}
+              title={lang === "en" ? "Skip current timer" : "跳过当前计时"}
+              style={{
+                width: 48, height: 48, borderRadius: "50%",
+                border: `2px solid ${C.frostDeep}`, background: C.white,
+                fontSize: 16, cursor: "pointer", color: C.slateLight,
+              }}
+            >⏭</button>
+            <span style={{ fontSize: 10, color: C.mist }}>{lang === "en" ? "Skip" : "跳过"}</span>
+          </div>
         </div>
+        {skipNotice && (
+          <p style={{ fontSize: 12, color: C.mist, marginTop: 4, animation: "fadeUp 0.2s ease" }}>
+            {skipNotice}
+          </p>
+        )}
       </div>
 
       {/* Tip */}
@@ -1291,7 +1333,7 @@ function MonthCalendar({ allDaysData, onSelectDay, locale, weekDays, t }) {
   );
 }
 
-function MoodPage() {
+function MoodPage({ lang: _lang }) {
   const { t, lang, locale } = useLanguage();
   const { user, isAIEnabled, setPaywallOpen, subLoading } = useFloeSubscription();
   const { canUse, remaining, increment, loading: usageLoading } = useUsage(user?.id);
@@ -1341,7 +1383,12 @@ function MoodPage() {
   const [typing, setTyping] = useState(false);
   const [expandedChats, setExpandedChats] = useState({});
   const [generatingFromChat, setGeneratingFromChat] = useState(null);
+  const [showSOS, setShowSOS] = useState(false);
+  const [sosStep, setSOSStep] = useState(1);
+  const [sosReason, setSOSReason] = useState(null);
+  const [chatListening, setChatListening] = useState(false);
   const chatBottomRef = useRef();
+  const chatRecognitionRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -1374,6 +1421,36 @@ function MoodPage() {
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, typing]);
+
+  useEffect(() => {
+    const SR =
+      typeof window !== "undefined"
+        ? window.SpeechRecognition || window.webkitSpeechRecognition
+        : null;
+    if (!SR) return;
+    let r;
+    try {
+      r = new SR();
+    } catch {
+      return;
+    }
+    r.lang = lang === "zh" ? "zh-CN" : "en-US";
+    r.interimResults = false;
+    r.maxAlternatives = 1;
+    r.continuous = false;
+    r.onstart = () => setChatListening(true);
+    r.onresult = (e) => {
+      setChatInput((prev) => prev + e.results[0][0].transcript);
+      setChatListening(false);
+    };
+    r.onerror = () => setChatListening(false);
+    r.onend = () => setChatListening(false);
+    chatRecognitionRef.current = r;
+    return () => {
+      r.abort?.();
+      chatRecognitionRef.current = null;
+    };
+  }, [lang]);
 
   const saveNote = () => {
     if (!inputText.trim()) return;
@@ -1489,6 +1566,57 @@ function MoodPage() {
     setView("day");
   };
 
+  const toggleChatMic = () => {
+    const r = chatRecognitionRef.current;
+    if (!r) return;
+    if (chatListening) {
+      r.stop?.();
+      return;
+    }
+    try {
+      r.start();
+    } catch {
+      /* already started */
+    }
+  };
+
+  const SOS_REASON_OPTIONS = [
+    {
+      id: "too_big",
+      labelZh: "😩 任务太大，不知从哪开始",
+      labelEn: "😩 Task feels too big",
+      actionZh: "打开文档，只看第一行。不用做，只是看。",
+      actionEn: "Open the doc. Just read the first line. Don't do anything yet.",
+    },
+    {
+      id: "anxious",
+      labelZh: "😰 有点焦虑，静不下来",
+      labelEn: "😰 Feeling anxious",
+      actionZh: "把脑子里所有担心的事，花2分钟全写下来。写完就放下。",
+      actionEn: "Spend 2 minutes writing down every worry. Then set it aside.",
+    },
+    {
+      id: "blank",
+      labelZh: "😶 脑子空白，什么都不想做",
+      labelEn: "😶 Mind is blank",
+      actionZh: "站起来，倒杯水，回来。就这一步。",
+      actionEn: "Stand up, get water, come back. Just that.",
+    },
+    {
+      id: "flow_lost",
+      labelZh: "😤 被打断了，失去状态",
+      labelEn: "😤 Lost my flow",
+      actionZh: "关掉所有 tab，只留一个。设一个15分钟计时器。",
+      actionEn: "Close all tabs, keep just one. Set a 15-minute timer.",
+    },
+  ];
+  const selectedSOS = SOS_REASON_OPTIONS.find((x) => x.id === sosReason) || SOS_REASON_OPTIONS[0];
+  const closeSOS = () => {
+    setShowSOS(false);
+    setSOSStep(1);
+    setSOSReason(null);
+  };
+
   return (
     <div className="page-enter" style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 72px)" }}>
       {/* Header */}
@@ -1500,16 +1628,20 @@ function MoodPage() {
               {new Date().toLocaleDateString(locale, { month: "numeric", day: "numeric" })}
             </p>
           </div>
-          <button
-            className="btn-press"
-            style={{
-              padding: "7px 14px", borderRadius: 20, border: "none",
-              background: `${C.blush}33`, color: C.blush,
-              fontSize: 12, fontWeight: 600, cursor: "pointer",
-            }}
-          >
-            {t("mood.stuck")}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <LanguageToggle />
+            <button
+              className="btn-press"
+              onClick={() => setShowSOS(true)}
+              style={{
+                padding: "7px 14px", borderRadius: 20, border: "none",
+                background: `${C.blush}33`, color: C.blush,
+                fontSize: 12, fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              {t("mood.stuck")}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2010,6 +2142,28 @@ function MoodPage() {
               display: "flex",
               gap: 10,
             }}>
+              {supportsSpeech && (
+                <button
+                  type="button"
+                  className="btn-press"
+                  onClick={toggleChatMic}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: "50%",
+                    border: "none",
+                    background: chatListening ? "#FF6B6B" : C.frostDeep,
+                    boxShadow: chatListening ? "0 0 0 6px rgba(255,107,107,0.2)" : "none",
+                    animation: chatListening ? "micPulse 1.5s ease-in-out infinite" : "none",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                    alignSelf: "center",
+                  }}
+                  title={lang === "en" ? "Voice input" : "语音输入"}
+                >
+                  {chatListening ? "🔴" : "🎤"}
+                </button>
+              )}
               <input
                 value={chatInput}
                 onChange={e => setChatInput(e.target.value)}
@@ -2049,6 +2203,164 @@ function MoodPage() {
           </div>
         </>
       )}
+
+      {showSOS && (
+        <>
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 155,
+              background: "rgba(28,43,48,0.35)",
+              backdropFilter: "blur(4px)",
+              animation: "fadeUp 0.2s ease",
+            }}
+            onClick={closeSOS}
+          />
+          <div
+            style={{
+              position: "fixed",
+              bottom: 0,
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: "100%",
+              maxWidth: 430,
+              height: "65vh",
+              zIndex: 160,
+              background: C.white,
+              borderRadius: "24px 24px 0 0",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 -8px 32px rgba(28,43,48,0.15)",
+              animation: "fadeUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)",
+              padding: "18px 24px 22px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 16 }}>
+              {[1, 2, 3].map((step) => (
+                <div
+                  key={step}
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: sosStep === step ? C.iceDeep : C.frostDeep,
+                  }}
+                />
+              ))}
+            </div>
+
+            {sosStep === 1 && (
+              <>
+                <h3 style={{ fontFamily: FONTS.display, fontSize: 22, fontWeight: 700, color: C.slate, marginBottom: 8 }}>
+                  {lang === "en" ? "It's okay. Take a breath first 🧊" : "没关系，先深呼吸 🧊"}
+                </h3>
+                <p style={{ fontSize: 14, color: C.slateLight, marginBottom: 16 }}>
+                  {lang === "en" ? "Tell me - where are you stuck?" : "告诉我，你现在卡在哪里了？"}
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  {SOS_REASON_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className="btn-press"
+                      onClick={() => {
+                        setSOSReason(opt.id);
+                        setSOSStep(2);
+                      }}
+                      style={{
+                        textAlign: "left",
+                        padding: "12px 10px",
+                        borderRadius: 14,
+                        border: `1.5px solid ${C.frostDeep}`,
+                        background: C.frost,
+                        color: C.slate,
+                        fontSize: 13,
+                        lineHeight: 1.45,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {lang === "en" ? opt.labelEn : opt.labelZh}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {sosStep === 2 && (
+              <>
+                <h3 style={{ fontFamily: FONTS.display, fontSize: 22, fontWeight: 700, color: C.slate, marginBottom: 10 }}>
+                  {lang === "en" ? "Okay. Just one thing." : "好。就做一件事。"}
+                </h3>
+                <div
+                  style={{
+                    background: C.frost,
+                    border: `1.5px solid ${C.frostDeep}`,
+                    borderRadius: 16,
+                    padding: "14px 14px",
+                    color: C.slate,
+                    fontSize: 14,
+                    lineHeight: 1.7,
+                    marginBottom: 16,
+                  }}
+                >
+                  {lang === "en" ? selectedSOS.actionEn : selectedSOS.actionZh}
+                </div>
+                <button
+                  type="button"
+                  className="btn-press"
+                  onClick={() => setSOSStep(3)}
+                  style={{
+                    width: "100%",
+                    marginTop: "auto",
+                    padding: "14px",
+                    borderRadius: 16,
+                    border: "none",
+                    background: `linear-gradient(135deg, ${C.iceDeep}, ${C.ice})`,
+                    color: "#fff",
+                    fontWeight: 600,
+                    fontSize: 15,
+                    cursor: "pointer",
+                  }}
+                >
+                  {lang === "en" ? "✓ I'll do this one thing" : "✓ 我去做这一件事"}
+                </button>
+              </>
+            )}
+
+            {sosStep === 3 && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginTop: 12, height: "100%" }}>
+                <div style={{ fontSize: 48, marginBottom: 10 }}>🧊</div>
+                <p style={{ fontSize: 18, fontWeight: 600, color: C.slate, marginBottom: 8 }}>
+                  {lang === "en" ? "Good. You started. That's enough." : "好。你开始了，这就够了。"}
+                </p>
+                <p style={{ fontSize: 13, color: C.mist, marginBottom: 20 }}>
+                  {lang === "en" ? "Come back and tell me how it went." : "做完回来，告诉我怎么样了。"}
+                </p>
+                <button
+                  type="button"
+                  className="btn-press"
+                  onClick={closeSOS}
+                  style={{
+                    marginTop: "auto",
+                    width: "100%",
+                    padding: "13px",
+                    borderRadius: 14,
+                    border: "none",
+                    background: C.iceDeep,
+                    color: "#fff",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {lang === "en" ? "Close" : "关闭"}
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -2057,6 +2369,21 @@ function MoodPage() {
    TAB 4 — 我
 ═══════════════════════════════════════════════════════ */
 const WEEK_FOCUS = [3, 1, 4, 2, 5, 3, 0];
+
+function getCompletedHistory() {
+  try {
+    const allDays = JSON.parse(localStorage.getItem("floe-all-days") || "{}");
+    const tasks = JSON.parse(localStorage.getItem("floe-tasks") || "[]");
+    const todayKey = new Date().toISOString().split("T")[0];
+    const todayCompleted = tasks.filter((t) => t.done);
+    return {
+      ...allDays,
+      [todayKey]: { ...(allDays[todayKey] || {}), completedTasks: todayCompleted },
+    };
+  } catch {
+    return {};
+  }
+}
 
 function BottomModal({ title, onClose, children }) {
   const { t } = useLanguage();
@@ -2088,19 +2415,47 @@ function BottomModal({ title, onClose, children }) {
   );
 }
 
-function MePage() {
+function MePage({ lang: _lang }) {
   const { t, lang } = useLanguage();
   const maxFocus = Math.max(...WEEK_FOCUS);
   const [streak] = useState(5);
   const [activeModal, setActiveModal] = useState(null); // null | 'pomodoro' | 'adhd' | 'notify' | 'partner'
+  const [expandedHistoryDate, setExpandedHistoryDate] = useState(null);
   const weekDayLabels = lang === "en" ? en.me.weekDays : zh.me.weekDays;
-
-  // Plant growth based on streak
-  const plantStage = streak >= 14 ? "🌳" : streak >= 7 ? "🌲" : streak >= 3 ? "🌱" : "🌿";
+  const historyMap = getCompletedHistory();
+  const todayKey = new Date().toISOString().split("T")[0];
+  const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().split("T")[0];
+    const dayInfo = historyMap[key] || {};
+    const completedTasks = dayInfo.completedTasks || [];
+    return { key, date: d, dayInfo, completedTasks };
+  });
+  const streakMessage =
+    streak >= 7
+      ? lang === "en"
+        ? "🔥 Over one week — amazing!"
+        : "🔥 超过一周了，了不起！"
+      : streak >= 3
+        ? lang === "en"
+          ? "✨ Keep it up, you got this!"
+          : "✨ 保持住，你做到了！"
+        : streak === 0
+          ? lang === "en"
+            ? "Finish one task today to start streak"
+            : "今天完成一件事即可打卡"
+          : lang === "en"
+            ? "🌱 Great start!"
+            : "🌱 好的开始！";
+  const streakPlant = streak >= 14 ? "🌳" : streak >= 7 ? "🌲" : streak >= 3 ? "🌱" : streak > 0 ? "🌿" : "🪴";
 
   return (
     <div className="page-enter" style={{ padding: "28px 24px 100px", overflowY: "auto" }}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <p style={{ fontSize: 12, color: C.mist }}>
+          {lang === "en" ? "Me" : "我"}
+        </p>
         <LanguageToggle />
       </div>
       {/* Profile */}
@@ -2118,11 +2473,10 @@ function MePage() {
       </div>
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
         {[
           { n: "18", label: t("me.statPomodoro"), icon: "🍅" },
           { n: "24", label: t("me.statDone"), icon: "✅" },
-          { n: `${streak}${t("me.streakSuffix")}`, label: t("me.statStreak"), icon: plantStage },
         ].map(s => (
           <div key={s.label} style={{
             background: C.white, borderRadius: 16, padding: "14px 12px", textAlign: "center",
@@ -2135,6 +2489,59 @@ function MePage() {
             <p style={{ fontSize: 11, color: C.mist }}>{s.label}</p>
           </div>
         ))}
+      </div>
+
+      <div style={{
+        background: streak > 0 ? `linear-gradient(135deg, ${C.gold}22, ${C.gold}11)` : C.bg,
+        border: `1.5px solid ${streak > 0 ? `${C.gold}44` : C.frostDeep}`,
+        borderRadius: 18,
+        padding: "16px 20px",
+        marginBottom: 14,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}>
+        <div>
+          <p style={{ fontSize: 11, color: C.mist, marginBottom: 4 }}>
+            {lang === "en" ? "Streak" : "连续打卡"}
+          </p>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span style={{ fontFamily: FONTS.display, fontSize: 32, fontWeight: 700, color: C.gold }}>{streak}</span>
+            <span style={{ fontSize: 14, color: C.slateLight }}>{lang === "en" ? "days" : "天"}</span>
+          </div>
+          <p style={{ fontSize: 12, color: C.mist, marginTop: 4 }}>{streakMessage}</p>
+        </div>
+        <div style={{ fontSize: streak > 0 ? 44 : 32 }}>{streakPlant}</div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 18 }}>
+        {last7Days.slice().reverse().map((day) => {
+          const isToday = day.key === todayKey;
+          const completed = day.completedTasks.length > 0;
+          return (
+            <div key={day.key} style={{ textAlign: "center" }}>
+              <div style={{
+                width: 20,
+                height: 20,
+                margin: "0 auto 4px",
+                borderRadius: "50%",
+                border: completed ? "none" : `1.5px solid ${isToday ? C.iceDeep : C.frostDeep}`,
+                background: completed ? C.gold : "transparent",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: completed ? "#fff" : C.mist,
+                fontSize: 10,
+                fontWeight: 700,
+              }}>
+                {completed ? "✓" : ""}
+              </div>
+              <span style={{ fontSize: 10, color: C.mist }}>
+                {day.date.toLocaleDateString(lang === "en" ? "en-US" : "zh-CN", { weekday: "narrow" })}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Focus chart */}
@@ -2166,6 +2573,65 @@ function MePage() {
         </div>
       </div>
 
+      <div style={{
+        background: C.white,
+        borderRadius: 18,
+        padding: "16px",
+        border: `1.5px solid ${C.frostDeep}`,
+        marginBottom: 14,
+      }}>
+        <p style={{ fontSize: 12, color: C.mist, fontWeight: 500, letterSpacing: "0.04em", marginBottom: 12 }}>
+          {lang === "en" ? "Last 7 days" : "最近7天"}
+        </p>
+        {last7Days.map((day) => {
+          const hasDone = day.completedTasks.length > 0;
+          const isToday = day.key === todayKey;
+          const isExpanded = expandedHistoryDate === day.key;
+          return (
+            <div key={day.key} style={{ marginBottom: 8 }}>
+              <button
+                type="button"
+                className="btn-press"
+                onClick={() => setExpandedHistoryDate((prev) => (prev === day.key ? null : day.key))}
+                style={{
+                  width: "100%",
+                  border: "none",
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  background: isToday ? C.frost : "transparent",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  cursor: "pointer",
+                  color: hasDone ? C.slate : C.mist,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13 }}>
+                    {day.date.toLocaleDateString(lang === "en" ? "en-US" : "zh-CN", { month: "numeric", day: "numeric" })}
+                  </span>
+                  {hasDone && day.dayInfo?.mood?.emoji && (
+                    <span style={{ fontSize: 14 }}>{day.dayInfo.mood.emoji}</span>
+                  )}
+                </div>
+                <span style={{ fontSize: 12 }}>
+                  {lang === "en" ? `Done ${day.completedTasks.length}` : `完成 ${day.completedTasks.length} 件`}
+                </span>
+              </button>
+              {isExpanded && day.completedTasks.length > 0 && (
+                <div style={{ padding: "8px 12px 2px", color: C.slateLight }}>
+                  {day.completedTasks.map((task) => (
+                    <p key={task.id} style={{ fontSize: 12, lineHeight: 1.6 }}>
+                      • {task.text}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
       {/* AI Insight */}
       <div style={{
         background: `linear-gradient(135deg, ${C.frost}, ${C.frostDeep}88)`,
@@ -2190,11 +2656,14 @@ function MePage() {
           { icon: "⚡", label: t("me.settingsAdhd"), value: t("me.settingsAdhdVal"), modal: "adhd" },
           { icon: "🔔", label: t("me.settingsNotify"), value: t("me.settingsNotifyVal"), modal: "notify" },
           { icon: "👥", label: t("me.settingsPartner"), value: t("me.settingsPartnerVal"), modal: "partner" },
+          { icon: "↪", label: t("me.settingsSignOut"), value: "", modal: null },
         ].map((item, i, arr) => (
           <button
             key={item.label}
             className="btn-press"
-            onClick={() => setActiveModal(item.modal)}
+            onClick={() => {
+              if (item.modal) setActiveModal(item.modal);
+            }}
             style={{
               width: "100%", padding: "15px 18px",
               display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -2207,7 +2676,7 @@ function MePage() {
               <span style={{ fontSize: 14, color: C.slate }}>{item.label}</span>
             </div>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: C.mist }}>{item.value}</span>
+              {item.value ? <span style={{ fontSize: 12, color: C.mist }}>{item.value}</span> : null}
               <span style={{ color: C.mist, fontSize: 14 }}>›</span>
             </div>
           </button>
@@ -2370,6 +2839,7 @@ function BottomNav({ active, setActive }) {
 ═══════════════════════════════════════════════════════ */
 export default function App() {
   const [tab, setTab] = useState("now");
+  const { lang } = useLanguage();
   const { paywallOpen, setPaywallOpen, trialDaysLeft, isTrialExpired } =
     useFloeSubscription();
 
@@ -2405,7 +2875,7 @@ export default function App() {
         }} />
 
         <div style={{ position: "relative", zIndex: 1 }}>
-          <Page key={tab} setTab={setTab} />
+          <Page key={tab} setTab={setTab} lang={lang} />
         </div>
 
         <BottomNav active={tab} setActive={setTab} />
