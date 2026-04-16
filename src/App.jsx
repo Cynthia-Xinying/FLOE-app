@@ -947,13 +947,25 @@ const FOCUS_MODES = [
   { id: "long",  mins: 15, color: C.blush,   emoji: "☁️" },
 ];
 
-function FocusPage({ lang: _lang }) {
+function FocusPage({
+  lang: _lang,
+  userProfile,
+  totalFocusMinutes = 0,
+  setTotalFocusMinutes,
+}) {
   const { t, lang } = useLanguage();
   const [mode, setMode]       = useState(FOCUS_MODES[0]);
   const [secs, setSecs]       = useState(FOCUS_MODES[0].mins * 60);
   const [running, setRunning] = useState(false);
   const [phase, setPhase]     = useState("idle"); // idle|running|completed
   const [skipNotice, setSkipNotice] = useState("");
+  const [showRoomPanel, setShowRoomPanel] = useState(false);
+  const [activeRoom, setActiveRoom] = useState(null);
+  const [roomCode, setRoomCode] = useState("");
+  const [roomTab, setRoomTab] = useState("create");
+  const [roomName, setRoomName] = useState("");
+  const [joinCodeInput, setJoinCodeInput] = useState("");
+  const [cheerToast, setCheerToast] = useState(false);
   const lastPhaseRef = useRef("idle");
   const [sessions, setSessions] = useState(() => {
     try {
@@ -994,7 +1006,9 @@ function FocusPage({ lang: _lang }) {
             clearInterval(intervalRef.current);
             setRunning(false);
             setPhase("completed");
-            if (mode.id === "focus" || mode.id === "adhd") setSessions(n => n + 1);
+            if (mode.id === "focus" || mode.id === "adhd") {
+              recordCompletedSession(mode.mins);
+            }
             return 0;
           }
           return s - 1;
@@ -1038,7 +1052,7 @@ function FocusPage({ lang: _lang }) {
     setRunning(false);
     setPhase("completed");
     if ((mode.id === "focus" || mode.id === "adhd") && elapsedRatio >= 0.3) {
-      setSessions((n) => n + 1);
+      recordCompletedSession(mode.mins);
       setSkipNotice("");
       return;
     }
@@ -1048,6 +1062,96 @@ function FocusPage({ lang: _lang }) {
         : "提示：跳过不会计入番茄数",
     );
     setTimeout(() => setSkipNotice(""), 2000);
+  };
+
+  const generateRoomCode = () =>
+    Math.random().toString(36).substring(2, 8).toUpperCase();
+
+  const recordCompletedSession = (mins) => {
+    setSessions((n) => n + 1);
+    if (typeof setTotalFocusMinutes === "function") {
+      setTotalFocusMinutes((m) => m + mins);
+    }
+  };
+
+  const createRoom = () => {
+    const code = generateRoomCode();
+    setRoomCode(code);
+    const ownerName =
+      userProfile?.displayName ||
+      userProfile?.identityTag ||
+      (lang === "en" ? "You" : "你");
+    setActiveRoom({
+      id: Date.now(),
+      code,
+      name: roomName.trim() || (lang === "en" ? "My Focus Room" : "我的专注室"),
+      members: [
+        {
+          emoji: userProfile?.avatarEmoji || "🧊",
+          name: ownerName,
+          status: lang === "en" ? "Focusing" : "专注中",
+          duration: `${mode.mins}m`,
+          isMe: true,
+        },
+        {
+          emoji: "🌿",
+          name: lang === "en" ? "Friend A" : "朋友A",
+          status: lang === "en" ? "Focusing" : "专注中",
+          duration: "25m",
+          isMe: false,
+        },
+        {
+          emoji: "⚡",
+          name: lang === "en" ? "Friend B" : "朋友B",
+          status: lang === "en" ? "On break" : "休息中",
+          duration: "5m",
+          isMe: false,
+        },
+        {
+          emoji: "🔥",
+          name: lang === "en" ? "Friend C" : "朋友C",
+          status: lang === "en" ? "Focusing" : "专注中",
+          duration: "15m",
+          isMe: false,
+        },
+      ],
+    });
+  };
+
+  const joinRoom = () => {
+    const code = joinCodeInput.trim().toUpperCase().slice(0, 6);
+    if (!code) return;
+    setActiveRoom({
+      id: Date.now(),
+      code,
+      name: lang === "en" ? `Room ${code}` : `房间 ${code}`,
+      members: [
+        {
+          emoji: userProfile?.avatarEmoji || "🧊",
+          name:
+            userProfile?.displayName ||
+            userProfile?.identityTag ||
+            (lang === "en" ? "You" : "你"),
+          status: lang === "en" ? "Focusing" : "专注中",
+          duration: `${mode.mins}m`,
+          isMe: true,
+        },
+        {
+          emoji: "🌿",
+          name: lang === "en" ? "Friend A" : "朋友A",
+          status: lang === "en" ? "Focusing" : "专注中",
+          duration: "20m",
+          isMe: false,
+        },
+        {
+          emoji: "⚡",
+          name: lang === "en" ? "Friend B" : "朋友B",
+          status: lang === "en" ? "On break" : "休息中",
+          duration: "5m",
+          isMe: false,
+        },
+      ],
+    });
   };
 
   const tipByMode = {
@@ -1220,20 +1324,271 @@ function FocusPage({ lang: _lang }) {
         </p>
       </div>
 
-      {/* Body Double */}
-      <button
-        className="btn-press"
-        style={{
-          width: "100%", marginTop: 12, padding: "13px",
-          borderRadius: 16, border: `1.5px dashed ${C.frostDeep}`,
-          background: "transparent", cursor: "pointer",
-          fontSize: 13, color: C.mist,
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-        }}
-      >
-        <span>👥</span>
-        <span>{t("focus.together")}</span>
-      </button>
+      <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+        <button
+          onClick={() => setShowRoomPanel(true)}
+          style={{
+            flex: 1, padding: "13px", borderRadius: 16,
+            border: "1.5px solid " + C.frostDeep,
+            background: activeRoom ? C.frost : "transparent",
+            cursor: "pointer", fontFamily: FONTS.body,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            fontSize: 13, color: activeRoom ? C.iceDeep : C.slateLight,
+            fontWeight: activeRoom ? 600 : 400,
+          }}
+        >
+          <span>👥</span>
+          <span>
+            {activeRoom
+              ? `${lang === "en" ? "Focus Room:" : "专注室："}${activeRoom.name} (${activeRoom.members.length}${lang === "en" ? "" : "人"})`
+              : (lang === "en" ? "Create or Join Focus Room" : "创建或加入专注室")}
+          </span>
+        </button>
+      </div>
+
+      {showRoomPanel && (
+        <>
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 180,
+              background: "rgba(28,43,48,0.35)",
+              backdropFilter: "blur(4px)",
+            }}
+            onClick={() => setShowRoomPanel(false)}
+          />
+          <div
+            style={{
+              position: "fixed",
+              left: "50%",
+              transform: "translateX(-50%)",
+              bottom: 0,
+              width: "100%",
+              maxWidth: 430,
+              height: "60vh",
+              background: C.white,
+              borderRadius: "24px 24px 0 0",
+              zIndex: 190,
+              padding: "18px 20px 24px",
+              display: "flex",
+              flexDirection: "column",
+              animation: "fadeUp 0.3s ease",
+            }}
+          >
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: C.frostDeep, margin: "0 auto 16px" }} />
+            {!activeRoom && (
+              <>
+                <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                  {[
+                    { id: "create", label: lang === "en" ? "Create Room" : "创建房间" },
+                    { id: "join", label: lang === "en" ? "Join Room" : "加入房间" },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setRoomTab(tab.id)}
+                      style={{
+                        flex: 1,
+                        padding: "9px 10px",
+                        borderRadius: 12,
+                        border: "none",
+                        background: roomTab === tab.id ? C.frostDeep : C.frost,
+                        color: roomTab === tab.id ? C.slate : C.mist,
+                        fontWeight: roomTab === tab.id ? 600 : 500,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {roomTab === "create" ? (
+                  <>
+                    <input
+                      value={roomName}
+                      onChange={(e) => setRoomName(e.target.value)}
+                      placeholder={lang === "en" ? "Name your focus room..." : "给专注室起个名字..."}
+                      style={{
+                        width: "100%",
+                        padding: "12px 14px",
+                        borderRadius: 14,
+                        border: "1.5px solid " + C.frostDeep,
+                        fontSize: 14,
+                        marginBottom: 10,
+                        outline: "none",
+                      }}
+                    />
+                    <p style={{ fontSize: 12, color: C.mist, marginBottom: 14 }}>
+                      {lang === "en" ? "Focus duration synced with current mode:" : "专注时长会同步当前模式："}
+                      {" "}
+                      {mode.mins}m
+                    </p>
+                    <button
+                      type="button"
+                      onClick={createRoom}
+                      style={{
+                        width: "100%",
+                        padding: "13px",
+                        borderRadius: 14,
+                        border: "none",
+                        background: `linear-gradient(135deg, ${C.iceDeep}, ${C.ice})`,
+                        color: "#fff",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        marginBottom: 14,
+                      }}
+                    >
+                      {lang === "en" ? "🚀 Create Focus Room" : "🚀 创建专注室"}
+                    </button>
+                    {roomCode && (
+                      <div style={{ textAlign: "center", background: C.frost, borderRadius: 14, padding: "12px 10px" }}>
+                        <p style={{ fontSize: 11, color: C.mist, marginBottom: 6 }}>
+                          {lang === "en" ? "Room Code" : "邀请码 / Room Code"}
+                        </p>
+                        <p style={{ fontFamily: FONTS.display, fontSize: 26, color: C.iceDeep, letterSpacing: "0.08em" }}>
+                          {roomCode}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => navigator.clipboard?.writeText(roomCode)}
+                          style={{
+                            marginTop: 8,
+                            padding: "8px 12px",
+                            borderRadius: 12,
+                            border: "1px solid " + C.frostDeep,
+                            background: C.white,
+                            cursor: "pointer",
+                            fontSize: 12,
+                          }}
+                        >
+                          {lang === "en" ? "Copy" : "复制"}
+                        </button>
+                        <p style={{ fontSize: 11, color: C.mist, marginTop: 8 }}>
+                          {lang === "en" ? "Share this code with friends to focus together!" : "把邀请码发给朋友，一起专注！"}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <input
+                      value={joinCodeInput}
+                      onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase().slice(0, 6))}
+                      placeholder={lang === "en" ? "Enter room code" : "输入邀请码"}
+                      style={{
+                        width: "100%",
+                        padding: "12px 14px",
+                        borderRadius: 14,
+                        border: "1.5px solid " + C.frostDeep,
+                        fontSize: 14,
+                        marginBottom: 10,
+                        outline: "none",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={joinRoom}
+                      style={{
+                        width: "100%",
+                        padding: "13px",
+                        borderRadius: 14,
+                        border: "none",
+                        background: `linear-gradient(135deg, ${C.iceDeep}, ${C.ice})`,
+                        color: "#fff",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {lang === "en" ? "Join" : "加入"}
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+
+            {activeRoom && (
+              <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                <h3 style={{ fontFamily: FONTS.display, fontSize: 19, marginBottom: 4 }}>
+                  {activeRoom.name}
+                </h3>
+                <p style={{ fontSize: 12, color: C.mist, marginBottom: 10 }}>
+                  {lang === "en"
+                    ? `${activeRoom.members.length} members · code ${activeRoom.code}`
+                    : `${activeRoom.members.length}人 · 邀请码 ${activeRoom.code}`}
+                </p>
+                <div style={{ background: C.frost, borderRadius: 14, padding: 12, overflowY: "auto", flex: 1 }}>
+                  {activeRoom.members.map((m) => (
+                    <div key={`${m.name}-${m.emoji}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0" }}>
+                      <span style={{ fontSize: 22 }}>{m.emoji}</span>
+                      <span style={{ flex: 1, fontSize: 14, color: C.slate }}>
+                        {m.name}
+                      </span>
+                      <span style={{
+                        fontSize: 11,
+                        color: m.status === (lang === "en" ? "Focusing" : "专注中") ? C.iceDeep : C.mist,
+                        background: C.white,
+                        borderRadius: 10,
+                        padding: "2px 8px",
+                      }}>
+                        {m.status}
+                      </span>
+                      <span style={{ fontSize: 11, color: C.mist }}>{m.duration}</span>
+                    </div>
+                  ))}
+                </div>
+                {cheerToast && (
+                  <p style={{ textAlign: "center", color: C.sage, fontSize: 12, marginTop: 8 }}>
+                    {lang === "en" ? "Cheer sent! 🎉" : "加油送出！🎉"}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCheerToast(true);
+                    setTimeout(() => setCheerToast(false), 1200);
+                  }}
+                  style={{
+                    marginTop: 12,
+                    width: "100%",
+                    padding: "12px",
+                    borderRadius: 12,
+                    border: "1.5px solid " + C.frostDeep,
+                    background: C.white,
+                    color: C.iceDeep,
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  {lang === "en" ? "👍 Cheer them on" : "👍 给他们加油"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveRoom(null);
+                    setShowRoomPanel(false);
+                  }}
+                  style={{
+                    marginTop: 8,
+                    width: "100%",
+                    padding: "12px",
+                    borderRadius: 12,
+                    border: "none",
+                    background: C.frostDeep,
+                    color: C.slateLight,
+                    cursor: "pointer",
+                  }}
+                >
+                  {lang === "en" ? "Leave Focus Room" : "离开专注室"}
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -2390,6 +2745,15 @@ function MoodPage({ lang: _lang }) {
    TAB 4 — 我
 ═══════════════════════════════════════════════════════ */
 const WEEK_FOCUS = [3, 1, 4, 2, 5, 3, 0];
+const PROFILE_EMOJI_OPTIONS = [
+  "🧊", "🌊", "🌿", "⚡", "🎯", "🌙", "☀️", "🌸", "🦋", "🐧",
+  "🌈", "🎨", "🎵", "📚", "🔥", "💎", "🌺", "🍀", "🦅", "✨",
+];
+const REWARDS = [
+  { threshold: 600, label: "10小时", reward: "🧠 3次 CBT AI 深度对话", icon: "🎁" },
+  { threshold: 1800, label: "30小时", reward: "🌟 专属成就徽章", icon: "🏅" },
+  { threshold: 3600, label: "60小时", reward: "💎 一个月 Floe Pro 免费", icon: "💎" },
+];
 
 function getCompletedHistory() {
   try {
@@ -2436,11 +2800,24 @@ function BottomModal({ title, onClose, children }) {
   );
 }
 
-function MePage({ lang: _lang, user, onSignOut }) {
+function MePage({
+  lang: _lang,
+  user,
+  onSignOut,
+  userProfile,
+  setUserProfile,
+  totalFocusMinutes = 0,
+}) {
   const { t, lang } = useLanguage();
   const maxFocus = Math.max(...WEEK_FOCUS);
   const [streak] = useState(5);
   const [activeModal, setActiveModal] = useState(null); // null | 'pomodoro' | 'adhd' | 'notify' | 'partner'
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [draftProfile, setDraftProfile] = useState(() => ({
+    displayName: userProfile?.displayName || "",
+    avatarEmoji: userProfile?.avatarEmoji || "🧊",
+    identityTag: userProfile?.identityTag || "",
+  }));
   const [expandedHistoryDate, setExpandedHistoryDate] = useState(null);
   const weekDayLabels = lang === "en" ? en.me.weekDays : zh.me.weekDays;
   const historyMap = getCompletedHistory();
@@ -2470,6 +2847,32 @@ function MePage({ lang: _lang, user, onSignOut }) {
             ? "🌱 Great start!"
             : "🌱 好的开始！";
   const streakPlant = streak >= 14 ? "🌳" : streak >= 7 ? "🌲" : streak >= 3 ? "🌱" : streak > 0 ? "🌿" : "🪴";
+  const leaderboardData = [
+    { rank: 1, emoji: "🔥", name: lang === "en" ? "Friend C" : "朋友C", mins: 340, isMe: false },
+    { rank: 2, emoji: "⚡", name: lang === "en" ? "Friend A" : "朋友A", mins: 290, isMe: false },
+    {
+      rank: 3,
+      emoji: userProfile?.avatarEmoji || "🧊",
+      name: userProfile?.displayName || (lang === "en" ? "You" : "你"),
+      mins: totalFocusMinutes,
+      isMe: true,
+    },
+    { rank: 4, emoji: "🌿", name: lang === "en" ? "Friend B" : "朋友B", mins: 180, isMe: false },
+  ];
+  const sortedLeaderboard = [...leaderboardData]
+    .sort((a, b) => b.mins - a.mins)
+    .map((item, i) => ({ ...item, rank: i + 1 }));
+  const nextReward = REWARDS.find((r) => totalFocusMinutes < r.threshold);
+  const pct = nextReward ? Math.round((totalFocusMinutes / nextReward.threshold) * 100) : 100;
+
+  const openProfileEditor = () => {
+    setDraftProfile({
+      displayName: userProfile?.displayName || "",
+      avatarEmoji: userProfile?.avatarEmoji || "🧊",
+      identityTag: userProfile?.identityTag || "",
+    });
+    setEditingProfile(true);
+  };
 
   return (
     <div className="page-enter" style={{ padding: "28px 24px 100px", overflowY: "auto" }}>
@@ -2479,21 +2882,59 @@ function MePage({ lang: _lang, user, onSignOut }) {
         </p>
         <LanguageToggle />
       </div>
-      {/* Profile */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 28 }}>
-        <div style={{
-          width: 52, height: 52, borderRadius: "50%",
-          background: `linear-gradient(135deg, ${C.frostDeep}, ${C.ice})`,
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26,
-          border: `2px solid ${C.white}`, boxShadow: `0 0 0 3px ${C.frostDeep}`,
-        }}>🧊</div>
-        <div>
-          <h2 style={{ fontFamily: FONTS.display, fontSize: 18, fontWeight: 600 }}>{t("me.hello")}</h2>
-          <p style={{ fontSize: 13, color: C.mist, marginTop: 2 }}>{t("me.subtitle")}</p>
-          <p style={{ fontSize: 12, color: C.mist, marginTop: 4 }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 14, marginBottom: 24,
+        padding: "16px", background: C.white, borderRadius: 20,
+        border: "1.5px solid " + C.frostDeep,
+      }}>
+        <div
+          onClick={openProfileEditor}
+          style={{
+            width: 56, height: 56, borderRadius: "50%",
+            background: "linear-gradient(135deg, " + C.frostDeep + ", " + C.ice + ")",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 28, cursor: "pointer", position: "relative",
+            border: "2px solid " + C.white,
+            boxShadow: "0 0 0 3px " + C.frostDeep,
+          }}
+        >
+          {userProfile?.avatarEmoji || "🧊"}
+          <div style={{
+            position: "absolute", bottom: -2, right: -2,
+            width: 18, height: 18, borderRadius: "50%",
+            background: C.iceDeep, border: "2px solid " + C.white,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 9, color: "#fff",
+          }}>✏️</div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <p style={{
+            fontFamily: FONTS.display, fontSize: 17, fontWeight: 600,
+            color: C.slate, marginBottom: 2,
+          }}>
+            {userProfile?.displayName || user?.email?.split("@")[0] || "你好 👋"}
+          </p>
+          {userProfile?.identityTag && (
+            <span style={{
+              fontSize: 12, color: C.mist, background: C.frost,
+              padding: "2px 10px", borderRadius: 20,
+            }}>
+              {userProfile.identityTag}
+            </span>
+          )}
+          <p style={{ fontSize: 11, color: C.mist, marginTop: 4 }}>
             {user?.email}
           </p>
         </div>
+        <button
+          onClick={openProfileEditor}
+          style={{
+            background: "none", border: "none", color: C.mist,
+            fontSize: 13, cursor: "pointer", fontFamily: FONTS.body,
+          }}
+        >
+          编辑
+        </button>
       </div>
 
       {/* Stats */}
@@ -2566,6 +3007,119 @@ function MePage({ lang: _lang, user, onSignOut }) {
             </div>
           );
         })}
+      </div>
+
+      <div style={{
+        background: C.white, borderRadius: 18, padding: "16px",
+        border: "1.5px solid " + C.frostDeep, marginBottom: 14,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <p style={{ fontSize: 13, fontWeight: 500, color: C.slateLight }}>
+            {lang === "en" ? "🏆 Weekly Leaderboard" : "🏆 本周专注排行"}
+          </p>
+          <span style={{ fontSize: 11, color: C.mist }}>
+            {lang === "en" ? "By focus time" : "按专注时长"}
+          </span>
+        </div>
+        {sortedLeaderboard.map((item) => (
+          <div key={item.rank} style={{
+            display: "flex", alignItems: "center", gap: 12,
+            padding: "10px 12px", borderRadius: 12, marginBottom: 6,
+            background: item.isMe ? C.frost : "transparent",
+            border: item.isMe ? "1.5px solid " + C.ice : "1.5px solid transparent",
+          }}>
+            <span style={{
+              width: 24, textAlign: "center",
+              fontSize: item.rank <= 3 ? 16 : 13,
+              color:
+                item.rank === 1 ? "#FFD700"
+                  : item.rank === 2 ? "#C0C0C0"
+                    : item.rank === 3 ? "#CD7F32"
+                      : C.mist,
+            }}>
+              {item.rank === 1 ? "🥇" : item.rank === 2 ? "🥈" : item.rank === 3 ? "🥉" : item.rank}
+            </span>
+            <span style={{ fontSize: 20 }}>{item.emoji}</span>
+            <span style={{
+              flex: 1, fontSize: 14,
+              color: item.isMe ? C.iceDeep : C.slate,
+              fontWeight: item.isMe ? 600 : 400,
+            }}>
+              {item.name}
+              {item.isMe ? (lang === "en" ? " (me)" : " (我)") : ""}
+            </span>
+            <span style={{ fontSize: 13, color: C.mist }}>
+              {Math.floor(item.mins / 60)}h {item.mins % 60}m
+            </span>
+          </div>
+        ))}
+        <p style={{ fontSize: 11, color: C.mist, textAlign: "center", marginTop: 8 }}>
+          {lang === "en" ? "Invite friends for real ranking · resets weekly" : "邀请朋友后可见真实排行 · 每周一重置"}
+        </p>
+      </div>
+
+      <div style={{
+        background: C.white, borderRadius: 18, padding: "16px",
+        border: "1.5px solid " + C.frostDeep, marginBottom: 14,
+      }}>
+        <p style={{ fontSize: 13, fontWeight: 500, color: C.slateLight, marginBottom: 14 }}>
+          {lang === "en" ? "🎁 Focus Rewards" : "🎁 专注奖励"}
+        </p>
+
+        {nextReward ? (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, gap: 10 }}>
+              <span style={{ fontSize: 13, color: C.slate }}>{nextReward.icon} {nextReward.reward}</span>
+              <span style={{ fontSize: 12, color: C.mist }}>
+                {Math.floor(totalFocusMinutes / 60)}h / {Math.floor(nextReward.threshold / 60)}h
+              </span>
+            </div>
+            <div style={{ height: 8, background: C.frostDeep, borderRadius: 4, overflow: "hidden" }}>
+              <div style={{
+                height: "100%",
+                width: pct + "%",
+                borderRadius: 4,
+                background: "linear-gradient(90deg, " + C.iceDeep + ", " + C.ice + ")",
+                transition: "width 0.8s cubic-bezier(0.34,1.56,0.64,1)",
+              }} />
+            </div>
+            <p style={{ fontSize: 11, color: C.mist, marginTop: 8 }}>
+              {lang === "en"
+                ? `Focus ${Math.max(0, Math.floor((nextReward.threshold - totalFocusMinutes) / 60))}h more to unlock`
+                : `再专注 ${Math.max(0, Math.floor((nextReward.threshold - totalFocusMinutes) / 60))}小时解锁下一个奖励`}
+            </p>
+          </>
+        ) : (
+          <p style={{ fontSize: 14, color: C.gold, textAlign: "center" }}>
+            🎉 {lang === "en" ? "All rewards unlocked!" : "所有奖励已解锁！"}
+          </p>
+        )}
+
+        <div style={{ marginTop: 14, borderTop: "1px solid " + C.frostDeep, paddingTop: 12 }}>
+          {REWARDS.map((r) => {
+            const unlocked = totalFocusMinutes >= r.threshold;
+            return (
+              <div key={r.label} style={{
+                display: "flex", gap: 10, alignItems: "center",
+                padding: "8px 0", opacity: unlocked ? 1 : 0.5,
+              }}>
+                <span style={{ fontSize: 18 }}>{unlocked ? r.icon : "🔒"}</span>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 13, color: unlocked ? C.slate : C.mist }}>{r.reward}</p>
+                  <p style={{ fontSize: 11, color: C.mist }}>{r.label} {lang === "en" ? "focus unlock" : "专注解锁"}</p>
+                </div>
+                {unlocked && (
+                  <span style={{
+                    fontSize: 11, color: C.sage, background: C.sage + "22",
+                    padding: "2px 8px", borderRadius: 10, fontWeight: 600,
+                  }}>
+                    {lang === "en" ? "Unlocked" : "已解锁"}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Focus chart */}
@@ -2717,6 +3271,130 @@ function MePage({ lang: _lang, user, onSignOut }) {
           </div>
         </button>
       </div>
+
+      {editingProfile && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 280,
+            background: "rgba(28,43,48,0.42)", backdropFilter: "blur(4px)",
+            display: "flex", alignItems: "flex-end",
+          }}
+          onClick={() => setEditingProfile(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%", maxWidth: 430, margin: "0 auto",
+              background: C.white, borderRadius: "24px 24px 0 0",
+              padding: "20px 20px 30px",
+              animation: "fadeUp 0.3s ease",
+            }}
+          >
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: C.frostDeep, margin: "0 auto 14px" }} />
+            <h3 style={{ fontFamily: FONTS.display, fontSize: 18, marginBottom: 14 }}>
+              编辑个人资料 / Edit Profile
+            </h3>
+
+            <p style={{ fontSize: 12, color: C.mist, marginBottom: 8 }}>头像 Avatar</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 14 }}>
+              {PROFILE_EMOJI_OPTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => setDraftProfile((p) => ({ ...p, avatarEmoji: emoji }))}
+                  style={{
+                    borderRadius: 12,
+                    border: draftProfile.avatarEmoji === emoji
+                      ? "1.8px solid " + C.iceDeep
+                      : "1.4px solid " + C.frostDeep,
+                    background: draftProfile.avatarEmoji === emoji ? C.frost : C.white,
+                    fontSize: 24,
+                    padding: "10px 0",
+                    cursor: "pointer",
+                  }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+
+            <p style={{ fontSize: 12, color: C.mist, marginBottom: 6 }}>昵称 Display Name</p>
+            <input
+              value={draftProfile.displayName}
+              onChange={(e) => setDraftProfile((p) => ({ ...p, displayName: e.target.value.slice(0, 20) }))}
+              placeholder="你想叫什么？"
+              maxLength={20}
+              style={{
+                width: "100%", padding: "12px 14px", borderRadius: 14,
+                border: "1.5px solid " + C.frostDeep, outline: "none",
+                fontSize: 14, marginBottom: 4, color: C.slate,
+              }}
+            />
+            <p style={{ fontSize: 11, color: C.mist, textAlign: "right", marginBottom: 10 }}>
+              {draftProfile.displayName.length}/20
+            </p>
+
+            <p style={{ fontSize: 12, color: C.mist, marginBottom: 6 }}>
+              身份标签 Identity Tag (optional)
+            </p>
+            <input
+              value={draftProfile.identityTag}
+              onChange={(e) => setDraftProfile((p) => ({ ...p, identityTag: e.target.value.slice(0, 15) }))}
+              placeholder="例：研究生 / 创业者 / 设计师 / 自由职业..."
+              maxLength={15}
+              style={{
+                width: "100%", padding: "12px 14px", borderRadius: 14,
+                border: "1.5px solid " + C.frostDeep, outline: "none",
+                fontSize: 14, marginBottom: 6, color: C.slate,
+              }}
+            />
+            <p style={{ fontSize: 11, color: C.mist, marginBottom: 12 }}>
+              随便写，这是你自己的标签
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setUserProfile({
+                  displayName: draftProfile.displayName.trim(),
+                  avatarEmoji: draftProfile.avatarEmoji || "🧊",
+                  identityTag: draftProfile.identityTag.trim(),
+                });
+                setEditingProfile(false);
+              }}
+              style={{
+                width: "100%",
+                padding: "13px",
+                borderRadius: 14,
+                border: "none",
+                background: `linear-gradient(135deg, ${C.iceDeep}, ${C.ice})`,
+                color: "#fff",
+                fontSize: 15,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              保存 Save
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditingProfile(false)}
+              style={{
+                marginTop: 10,
+                width: "100%",
+                padding: "10px",
+                border: "none",
+                background: "none",
+                color: C.mist,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
 
       {activeModal === "pomodoro" && (
         <BottomModal title={t("me.modalPomodoroTitle")} onClose={() => setActiveModal(null)}>
@@ -2880,8 +3558,34 @@ export default function App() {
   const { lang } = useLanguage();
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("floe-profile") || "null") || {
+        displayName: "",
+        avatarEmoji: "🧊",
+        identityTag: "",
+      };
+    } catch {
+      return { displayName: "", avatarEmoji: "🧊", identityTag: "" };
+    }
+  });
+  const [totalFocusMinutes, setTotalFocusMinutes] = useState(() => {
+    try {
+      return parseInt(localStorage.getItem("floe-total-focus-mins") || "0", 10) || 0;
+    } catch {
+      return 0;
+    }
+  });
   const { paywallOpen, setPaywallOpen, trialDaysLeft, isTrialExpired } =
     useFloeSubscription();
+
+  useEffect(() => {
+    localStorage.setItem("floe-profile", JSON.stringify(userProfile));
+  }, [userProfile]);
+
+  useEffect(() => {
+    localStorage.setItem("floe-total-focus-mins", String(totalFocusMinutes));
+  }, [totalFocusMinutes]);
 
   useEffect(() => {
     const syncPosthogIdentity = (session) => {
@@ -2977,6 +3681,10 @@ export default function App() {
             lang={lang}
             user={user}
             onSignOut={() => supabase.auth.signOut()}
+            userProfile={userProfile}
+            setUserProfile={setUserProfile}
+            totalFocusMinutes={totalFocusMinutes}
+            setTotalFocusMinutes={setTotalFocusMinutes}
           />
         </div>
 
