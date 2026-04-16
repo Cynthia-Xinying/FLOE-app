@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import posthog from "posthog-js";
 import { supabase } from "../lib/supabase";
 
 const C = {
@@ -67,6 +68,7 @@ export default function AuthScreen({ onAuthSuccess }) {
       setError(signUpError.message);
       return;
     }
+    posthog.capture("user_signed_up", { method: "email" });
     setSuccess("验证邮件已发送，请查收 ✓");
   };
 
@@ -84,6 +86,7 @@ export default function AuthScreen({ onAuthSuccess }) {
       setError(signInError.message);
       return;
     }
+    posthog.capture("user_logged_in");
     onAuthSuccess?.(data.user);
   };
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import posthog from "posthog-js";
 import { getCBTResponse, generateJournalEntry } from "./lib/aiService";
 import { safeGetItem, safeSetItem } from "./lib/safeStorage";
 import { useLanguage } from "./context/LanguageContext.jsx";
@@ -345,6 +346,7 @@ function NowPage({ setTab, lang: _lang }) {
       if (t.id !== id) return t;
       const nowDone = !t.done;
       if (nowDone) {
+        posthog.capture("task_completed");
         setBurst(id);
         setTimeout(() => setBurst(null), 600);
         // Check if all done
@@ -357,10 +359,13 @@ function NowPage({ setTab, lang: _lang }) {
 
   const addTask = () => {
     if (!newText.trim()) return;
-    setTasks(ts => [...ts, {
-      id: Date.now(), text: newText.trim(),
+    const newTask = {
+      id: Date.now(),
+      text: newText.trim(),
       done: false, energy: "medium", mins: 15, tag: "inbox",
-    }]);
+    };
+    setTasks(ts => [...ts, newTask]);
+    posthog.capture("task_added", { energy: newTask.energy, tag: newTask.tag });
     setNewText("");
   };
 
@@ -949,6 +954,7 @@ function FocusPage({ lang: _lang }) {
   const [running, setRunning] = useState(false);
   const [phase, setPhase]     = useState("idle"); // idle|running|completed
   const [skipNotice, setSkipNotice] = useState("");
+  const lastPhaseRef = useRef("idle");
   const [sessions, setSessions] = useState(() => {
     try {
       const today = new Date().toISOString().split("T")[0];
@@ -999,6 +1005,13 @@ function FocusPage({ lang: _lang }) {
     }
     return () => clearInterval(intervalRef.current);
   }, [running]);
+
+  useEffect(() => {
+    if (phase === "completed" && lastPhaseRef.current !== "completed") {
+      posthog.capture("pomodoro_completed", { mode: mode.id, mins: mode.mins });
+    }
+    lastPhaseRef.current = phase;
+  }, [phase, mode.id, mode.mins]);
 
   const switchMode = (m) => {
     clearInterval(intervalRef.current);
@@ -1462,6 +1475,7 @@ function MoodPage({ lang: _lang }) {
       createdAt: new Date(),
       content: inputText.trim(),
     }]);
+    posthog.capture("journal_note_saved");
     setInputText("");
   };
 
@@ -1504,6 +1518,7 @@ function MoodPage({ lang: _lang }) {
       return;
     }
     await increment("ai_turns");
+    posthog.capture("ai_chat_sent");
     const text = chatInput;
     setChatInput("");
     const updatedMessages = [...chatMessages, { role: "user", text }];
@@ -1540,6 +1555,7 @@ function MoodPage({ lang: _lang }) {
       return;
     }
     await increment("journal_generates");
+    posthog.capture("journal_generated");
     setGeneratingFromChat(entry.id);
     try {
       const journalText = await generateJournalEntry(entry.messages, lang);
@@ -1664,7 +1680,10 @@ function MoodPage({ lang: _lang }) {
             return (
               <div
                 key={i}
-                onClick={() => setSelectedMood(i)}
+                onClick={() => {
+                  setSelectedMood(i);
+                  posthog.capture("mood_selected", { mood_index: i });
+                }}
                 className="btn-press"
                 style={{
                   display: "flex",
@@ -2815,7 +2834,10 @@ function BottomNav({ active, setActive }) {
       {TAB_DEFS.map(tab => (
         <button
           key={tab.id}
-          onClick={() => setActive(tab.id)}
+          onClick={() => {
+            setActive(tab.id);
+            posthog.capture("tab_switched", { tab: tab.id });
+          }}
           style={{
             flex: 1, background: "none", border: "none", cursor: "pointer",
             display: "flex", flexDirection: "column", alignItems: "center",
@@ -2862,14 +2884,27 @@ export default function App() {
     useFloeSubscription();
 
   useEffect(() => {
+    const syncPosthogIdentity = (session) => {
+      if (session?.user) {
+        posthog.identify(session.user.id, {
+          email: session.user.email,
+          created_at: session.user.created_at,
+        });
+      } else {
+        posthog.reset();
+      }
+    };
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
+      syncPosthogIdentity(session);
       setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null);
+        syncPosthogIdentity(session);
       },
     );
 
