@@ -12,9 +12,7 @@ import { useSubscription } from "../hooks/useSubscription";
 const SubscriptionContext = createContext(null);
 
 function subscriptionEnforced() {
-  return (
-    Boolean(supabase) && import.meta.env.VITE_SUBSCRIPTION_DISABLE !== "true"
-  );
+  return import.meta.env.VITE_SUBSCRIPTION_DISABLE !== "true";
 }
 
 export function SubscriptionProvider({ children }) {
@@ -26,29 +24,13 @@ export function SubscriptionProvider({ children }) {
     useSubscription(user?.id);
 
   useEffect(() => {
-    if (!supabase) {
-      setAuthReady(true);
-      return;
-    }
     let cancelled = false;
     (async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (cancelled) return;
-      if (session?.user) {
-        setUser(session.user);
-        setAuthReady(true);
-        return;
-      }
-      const { data, error } = await supabase.auth.signInAnonymously();
-      if (cancelled) return;
-      if (error) {
-        console.warn("[Floe] Anonymous sign-in failed:", error.message);
-        setAuthReady(true);
-        return;
-      }
-      setUser(data.user);
+      setUser(session?.user ?? null);
       setAuthReady(true);
     })();
 

@@ -3,7 +3,9 @@ import { getCBTResponse, generateJournalEntry } from "./lib/aiService";
 import { safeGetItem, safeSetItem } from "./lib/safeStorage";
 import { useLanguage } from "./context/LanguageContext.jsx";
 import { useFloeSubscription } from "./context/SubscriptionContext.jsx";
+import { supabase } from "./lib/supabase";
 import Paywall from "./components/Paywall.jsx";
+import AuthScreen from "./components/AuthScreen.jsx";
 import { useUsage } from "./hooks/useUsage.js";
 import { zh } from "./locales/zh";
 import { en } from "./locales/en";
@@ -2415,7 +2417,7 @@ function BottomModal({ title, onClose, children }) {
   );
 }
 
-function MePage({ lang: _lang }) {
+function MePage({ lang: _lang, user, onSignOut }) {
   const { t, lang } = useLanguage();
   const maxFocus = Math.max(...WEEK_FOCUS);
   const [streak] = useState(5);
@@ -2469,6 +2471,9 @@ function MePage({ lang: _lang }) {
         <div>
           <h2 style={{ fontFamily: FONTS.display, fontSize: 18, fontWeight: 600 }}>{t("me.hello")}</h2>
           <p style={{ fontSize: 13, color: C.mist, marginTop: 2 }}>{t("me.subtitle")}</p>
+          <p style={{ fontSize: 12, color: C.mist, marginTop: 4 }}>
+            {user?.email}
+          </p>
         </div>
       </div>
 
@@ -2656,14 +2661,11 @@ function MePage({ lang: _lang }) {
           { icon: "⚡", label: t("me.settingsAdhd"), value: t("me.settingsAdhdVal"), modal: "adhd" },
           { icon: "🔔", label: t("me.settingsNotify"), value: t("me.settingsNotifyVal"), modal: "notify" },
           { icon: "👥", label: t("me.settingsPartner"), value: t("me.settingsPartnerVal"), modal: "partner" },
-          { icon: "↪", label: t("me.settingsSignOut"), value: "", modal: null },
         ].map((item, i, arr) => (
           <button
             key={item.label}
             className="btn-press"
-            onClick={() => {
-              if (item.modal) setActiveModal(item.modal);
-            }}
+            onClick={() => setActiveModal(item.modal)}
             style={{
               width: "100%", padding: "15px 18px",
               display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -2676,11 +2678,25 @@ function MePage({ lang: _lang }) {
               <span style={{ fontSize: 14, color: C.slate }}>{item.label}</span>
             </div>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              {item.value ? <span style={{ fontSize: 12, color: C.mist }}>{item.value}</span> : null}
+              <span style={{ fontSize: 12, color: C.mist }}>{item.value}</span>
               <span style={{ color: C.mist, fontSize: 14 }}>›</span>
             </div>
           </button>
         ))}
+        <button
+          onClick={onSignOut}
+          style={{
+            width: "100%", marginTop: 8, padding: "15px 18px",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            background: "none", border: "none", cursor: "pointer",
+            borderTop: "1px solid " + C.frostDeep,
+          }}
+        >
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <span style={{ fontSize: 16 }}>👋</span>
+            <span style={{ fontSize: 14, color: C.mist }}>退出登录 Sign out</span>
+          </div>
+        </button>
       </div>
 
       {activeModal === "pomodoro" && (
@@ -2840,8 +2856,53 @@ function BottomNav({ active, setActive }) {
 export default function App() {
   const [tab, setTab] = useState("now");
   const { lang } = useLanguage();
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const { paywallOpen, setPaywallOpen, trialDaysLeft, isTrialExpired } =
     useFloeSubscription();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null);
+      },
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (authLoading) {
+    return (
+      <>
+        <Styles />
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100dvh",
+          background: "#F4F1EC",
+        }}>
+          <span style={{ fontSize: 52, animation: "floatIce 2s ease-in-out infinite" }}>
+            🧊
+          </span>
+        </div>
+      </>
+    );
+  }
+
+  if (!user) {
+    return (
+      <>
+        <Styles />
+        <AuthScreen onAuthSuccess={(u) => setUser(u)} />
+      </>
+    );
+  }
 
   const pages = { now: NowPage, focus: FocusPage, mood: MoodPage, me: MePage };
   const Page  = pages[tab] || NowPage;
@@ -2875,7 +2936,13 @@ export default function App() {
         }} />
 
         <div style={{ position: "relative", zIndex: 1 }}>
-          <Page key={tab} setTab={setTab} lang={lang} />
+          <Page
+            key={tab}
+            setTab={setTab}
+            lang={lang}
+            user={user}
+            onSignOut={() => supabase.auth.signOut()}
+          />
         </div>
 
         <BottomNav active={tab} setActive={setTab} />
