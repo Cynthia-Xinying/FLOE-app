@@ -3301,7 +3301,10 @@ function MePage({
                 <button
                   key={emoji}
                   type="button"
-                  onClick={() => setDraftProfile((p) => ({ ...p, avatarEmoji: emoji }))}
+                  onClick={() => {
+                    setDraftProfile((p) => ({ ...p, avatarEmoji: emoji }));
+                    setUserProfile((p) => ({ ...p, avatarEmoji: emoji }));
+                  }}
                   style={{
                     borderRadius: 12,
                     border: draftProfile.avatarEmoji === emoji
